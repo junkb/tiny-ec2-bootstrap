@@ -5,15 +5,20 @@ description="Provides EC2 cloud bootstrap"
 
 # override in /etc/conf.d/tiny-ec2-bootstrap
 EC2_USER=${EC2_USER:-alpine}
+metadata_token_lifetime='60'
 
 depend() {
     need net
     provide cloud-final
 }
 
+_get_metadata_token() {
+    metadata_token=$(curl -sX PUT 'http://169.254.169.254/latest/api/token' -H "X-aws-ec2-metadata-token-ttl-seconds: ${metadata_token_lifetime}" 2>/dev/null)
+}
+
 _get_metadata() {
     local uri="$1"
-    wget -qO - "http://169.254.169.254/latest/$uri" 2>/dev/null
+    wget -qO - --header="X-aws-ec2-metadata-token: ${metadata_token}" "http://169.254.169.254/latest/$uri" 2>/dev/null
 }
 
 _update_hostname() {
@@ -70,6 +75,7 @@ start() {
 
     [ -d "/var/lib/cloud" ] || mkdir -p /var/lib/cloud
 
+    ebegin "Retrieving metadata service api token"; _get_metadata_token; eend $?
     ebegin "Disabling root password"; _disable_password root; eend $?
     ebegin "Disabling $EC2_USER password"; _disable_password "$EC2_USER"; eend $?
     ebegin "Resizing root partition"; _resize_root_partition; eend $?
